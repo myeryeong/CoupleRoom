@@ -1,13 +1,14 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { Interaction, Message, RoomPresence } from '../types/models';
+import { Interaction, Message, RealtimePresenceState } from '../types/models';
 
-type PresenceHandler = (presence: RoomPresence) => void;
+type PresenceHandler = (presences: RealtimePresenceState[]) => void;
 type MessageHandler = (message: Message) => void;
 type InteractionHandler = (interaction: Interaction) => void;
 
 export function subscribeToRoom(
   coupleId: string,
+  initialPresence: RealtimePresenceState,
   handlers: {
     onPresence: PresenceHandler;
     onMessage: MessageHandler;
@@ -15,17 +16,20 @@ export function subscribeToRoom(
   }
 ): RealtimeChannel {
   const channel = supabase
-    .channel(`couple-room:${coupleId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'room_presence',
-        filter: `couple_id=eq.${coupleId}`
-      },
-      (payload) => handlers.onPresence(payload.new as RoomPresence)
-    )
+    .channel(`room:${coupleId}`, {
+      config: {
+        presence: {
+          key: initialPresence.user_id
+        }
+      }
+    })
+    .on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const presences = Object.values(state)
+        .flat()
+        .map((item) => item as unknown as RealtimePresenceState);
+      handlers.onPresence(presences);
+    })
     .on(
       'postgres_changes',
       {
@@ -45,14 +49,36 @@ export function subscribeToRoom(
         filter: `couple_id=eq.${coupleId}`
       },
       (payload) => handlers.onInteraction(payload.new as Interaction)
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'room_presence',
+        filter: `couple_id=eq.${coupleId}`
+      },
+      () => undefined
     );
 
-  channel.subscribe();
+  channel.subscribe(async (status) => {
+    if (status === 'SUBSCRIBED') {
+      await channel.track(initialPresence);
+    }
+  });
+
   return channel;
+}
+
+export async function trackRoomPresence(channel: RealtimeChannel | null, presence: RealtimePresenceState) {
+  if (channel) {
+    await channel.track(presence);
+  }
 }
 
 export function unsubscribe(channel?: RealtimeChannel | null) {
   if (channel) {
+    channel.untrack();
     supabase.removeChannel(channel);
   }
 }

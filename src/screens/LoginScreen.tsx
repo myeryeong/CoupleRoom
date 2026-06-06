@@ -15,8 +15,23 @@ export default function LoginScreen({ onSignup }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>다시 만나는 방</Text>
       <Text style={styles.subtitle}>이메일로 로그인하고 둘만의 공간에 들어가요.</Text>
-      <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
+      <TextInput
+        style={styles.input}
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        placeholder="이메일"
+        placeholderTextColor="#9c8a90"
+      />
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        placeholder="비밀번호"
+        placeholderTextColor="#9c8a90"
+      />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Pressable style={styles.primary} disabled={loading} onPress={() => login(email, password)}>
         <Text style={styles.primaryText}>{loading ? '확인 중' : '로그인'}</Text>

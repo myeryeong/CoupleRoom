@@ -23,10 +23,19 @@ export type RoomPresence = {
   id: string;
   couple_id: string;
   user_id: string;
+  nickname?: string;
   x: number;
   y: number;
   is_online: boolean;
   last_seen: string;
+};
+
+export type RealtimePresenceState = {
+  user_id: string;
+  nickname: string;
+  x: number;
+  y: number;
+  online_at: string;
 };
 
 export type Message = {

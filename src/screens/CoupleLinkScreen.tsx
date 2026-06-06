@@ -9,7 +9,7 @@ type Props = {
 
 export default function CoupleLinkScreen({ onLinked }: Props) {
   const { profile, setProfile } = useAuthStore();
-  const { createInvite, joinInvite, couple, loading } = useRoomStore();
+  const { createInvite, joinInvite, couple, loading, error } = useRoomStore();
   const [inviteCode, setInviteCode] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -23,14 +23,16 @@ export default function CoupleLinkScreen({ onLinked }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>커플 연결</Text>
-      <Text style={styles.subtitle}>초대 코드를 만들거나 받은 코드를 입력하면 같은 방으로 연결돼요.</Text>
+      <Text style={styles.subtitle}>초대 코드를 만들거나 받은 코드를 입력하면 같은 Couple Room으로 연결돼요.</Text>
+
       {couple?.invite_code ? (
         <View style={styles.inviteBox}>
           <Text style={styles.inviteLabel}>내 초대 코드</Text>
           <Text style={styles.inviteCode}>{couple.invite_code}</Text>
-          <Text style={styles.notice}>상대가 입력하면 방이 열려요.</Text>
+          <Text style={styles.notice}>상대가 이 코드를 입력하면 같은 방에 들어올 수 있어요.</Text>
         </View>
       ) : null}
+
       <Pressable
         style={styles.primary}
         disabled={!profile || loading}
@@ -38,13 +40,19 @@ export default function CoupleLinkScreen({ onLinked }: Props) {
           if (!profile) {
             return;
           }
-          const nextCouple = await createInvite(profile.id);
-          applyCouple(nextCouple.id);
+          try {
+            const nextCouple = await createInvite(profile);
+            applyCouple(nextCouple.id);
+          } catch (nextError) {
+            setNotice(nextError instanceof Error ? nextError.message : '초대 코드 생성에 실패했어요.');
+          }
         }}
       >
-        <Text style={styles.primaryText}>초대 코드 만들기</Text>
+        <Text style={styles.primaryText}>{loading ? '처리 중' : '초대 코드 만들기'}</Text>
       </Pressable>
+
       <View style={styles.divider} />
+
       <TextInput
         style={styles.input}
         value={inviteCode}
@@ -61,13 +69,18 @@ export default function CoupleLinkScreen({ onLinked }: Props) {
             setNotice('초대 코드를 입력해 주세요.');
             return;
           }
-          const nextCouple = await joinInvite(inviteCode.trim(), profile.id);
-          applyCouple(nextCouple.id);
+          try {
+            const nextCouple = await joinInvite(inviteCode, profile);
+            applyCouple(nextCouple.id);
+          } catch (nextError) {
+            setNotice(nextError instanceof Error ? nextError.message : '커플 연결에 실패했어요.');
+          }
         }}
       >
         <Text style={styles.secondaryText}>코드로 입장</Text>
       </Pressable>
-      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+
+      {notice || error ? <Text style={styles.notice}>{notice || error}</Text> : null}
     </View>
   );
 }
@@ -149,6 +162,7 @@ const styles = StyleSheet.create({
   },
   notice: {
     marginTop: 10,
-    color: '#8d6270'
+    color: '#8d6270',
+    lineHeight: 20
   }
 });

@@ -2,11 +2,22 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { createInviteCode, isMockMode, supabase } from '../lib/supabase';
-import { subscribeToRoom, unsubscribe } from '../lib/realtime';
-import { Couple, DailyAnswer, DailyQuestion, Interaction, Message, Point, Profile, RoomPresence } from '../types/models';
+import { subscribeToRoom, trackRoomPresence, unsubscribe } from '../lib/realtime';
+import {
+  Couple,
+  DailyAnswer,
+  DailyQuestion,
+  Interaction,
+  Message,
+  Point,
+  Profile,
+  RealtimePresenceState,
+  RoomPresence
+} from '../types/models';
 
 type RoomState = {
   couple: Couple | null;
+  partnerProfile: Profile | null;
   myPresence: RoomPresence | null;
   partnerPresence: RoomPresence | null;
   messages: Message[];
@@ -16,8 +27,8 @@ type RoomState = {
   loading: boolean;
   error: string | null;
   channel: RealtimeChannel | null;
-  createInvite: (userId: string) => Promise<Couple>;
-  joinInvite: (inviteCode: string, userId: string) => Promise<Couple>;
+  createInvite: (profile: Profile) => Promise<Couple>;
+  joinInvite: (inviteCode: string, profile: Profile) => Promise<Couple>;
   loadRoom: (profile: Profile) => Promise<void>;
   updatePosition: (profile: Profile, point: Point) => Promise<void>;
   sendMessage: (profile: Profile, content: string) => Promise<void>;
@@ -32,6 +43,29 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function toRoomPresence(profile: Profile, point: Point, isOnline = true): RoomPresence {
+  return {
+    id: makeId('presence'),
+    couple_id: profile.couple_id ?? '',
+    user_id: profile.id,
+    nickname: profile.nickname,
+    x: point.x,
+    y: point.y,
+    is_online: isOnline,
+    last_seen: new Date().toISOString()
+  };
+}
+
+function toRealtimePresence(profile: Profile, point: Point): RealtimePresenceState {
+  return {
+    user_id: profile.id,
+    nickname: profile.nickname,
+    x: point.x,
+    y: point.y,
+    online_at: new Date().toISOString()
+  };
+}
+
 async function readMockCouple() {
   const stored = await AsyncStorage.getItem('mock-couple');
   return stored ? (JSON.parse(stored) as Couple) : null;
@@ -41,8 +75,20 @@ async function saveMockCouple(couple: Couple) {
   await AsyncStorage.setItem('mock-couple', JSON.stringify(couple));
 }
 
+async function saveMockProfile(profile: Profile) {
+  await AsyncStorage.setItem('mock-profile', JSON.stringify(profile));
+}
+
+function findPartnerId(couple: Couple | null, currentUserId: string) {
+  if (!couple) {
+    return null;
+  }
+  return couple.user1_id === currentUserId ? couple.user2_id : couple.user1_id;
+}
+
 export const useRoomStore = create<RoomState>((set, get) => ({
   couple: null,
+  partnerProfile: null,
   myPresence: null,
   partnerPresence: null,
   messages: [],
@@ -53,50 +99,74 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   error: null,
   channel: null,
 
-  createInvite: async (userId) => {
+  createInvite: async (profile) => {
     set({ loading: true, error: null });
     try {
       const invite_code = createInviteCode();
+
       if (isMockMode) {
         const couple: Couple = {
           id: makeId('couple'),
           invite_code,
-          user1_id: userId,
+          user1_id: profile.id,
           user2_id: null
         };
         await saveMockCouple(couple);
+        await saveMockProfile({ ...profile, couple_id: couple.id });
         set({ couple });
         return couple;
       }
 
       const { data, error } = await supabase
         .from('couples')
-        .insert({ invite_code, user1_id: userId })
+        .insert({ invite_code, user1_id: profile.id, user2_id: null })
         .select('*')
         .single();
       if (error) {
         throw error;
       }
-      await supabase.from('profiles').update({ couple_id: data.id }).eq('id', userId);
+
+      const { error: profileError } = await supabase.from('profiles').update({ couple_id: data.id }).eq('id', profile.id);
+      if (profileError) {
+        throw profileError;
+      }
+
       set({ couple: data });
       return data;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '초대 코드 생성에 실패했어요.';
+      set({ error: message });
+      throw new Error(message);
     } finally {
       set({ loading: false });
     }
   },
 
-  joinInvite: async (inviteCode, userId) => {
+  joinInvite: async (inviteCode, profile) => {
     set({ loading: true, error: null });
     try {
+      const normalizedCode = inviteCode.trim().toUpperCase();
+
       if (isMockMode) {
-        const existing = (await readMockCouple()) ?? {
-          id: makeId('couple'),
-          invite_code: inviteCode.toUpperCase(),
-          user1_id: 'partner-user',
-          user2_id: null
-        };
-        const couple = { ...existing, user2_id: userId };
+        const existing =
+          (await readMockCouple()) ??
+          ({
+            id: makeId('couple'),
+            invite_code: normalizedCode,
+            user1_id: 'partner-user',
+            user2_id: null
+          } satisfies Couple);
+
+        if (existing.user1_id === profile.id) {
+          throw new Error('본인의 초대 코드는 사용할 수 없습니다.');
+        }
+        if (existing.user2_id && existing.user2_id !== profile.id) {
+          throw new Error('이미 연결된 초대 코드입니다.');
+        }
+
+        const couple = { ...existing, user2_id: profile.id };
         await saveMockCouple(couple);
+        await saveMockProfile({ ...profile, couple_id: couple.id });
         set({ couple });
         return couple;
       }
@@ -104,24 +174,43 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       const { data: couple, error } = await supabase
         .from('couples')
         .select('*')
-        .eq('invite_code', inviteCode.toUpperCase())
-        .is('user2_id', null)
-        .single();
+        .eq('invite_code', normalizedCode)
+        .maybeSingle();
       if (error) {
         throw error;
       }
+      if (!couple) {
+        throw new Error('초대 코드를 찾을 수 없습니다.');
+      }
+      if (couple.user1_id === profile.id) {
+        throw new Error('본인의 초대 코드는 사용할 수 없습니다.');
+      }
+      if (couple.user2_id && couple.user2_id !== profile.id) {
+        throw new Error('이미 연결된 초대 코드입니다.');
+      }
+
       const { data, error: updateError } = await supabase
         .from('couples')
-        .update({ user2_id: userId })
+        .update({ user2_id: profile.id })
         .eq('id', couple.id)
+        .is('user2_id', null)
         .select('*')
         .single();
       if (updateError) {
         throw updateError;
       }
-      await supabase.from('profiles').update({ couple_id: data.id }).eq('id', userId);
+
+      const { error: profileError } = await supabase.from('profiles').update({ couple_id: data.id }).eq('id', profile.id);
+      if (profileError) {
+        throw profileError;
+      }
+
       set({ couple: data });
       return data;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '커플 연결에 실패했어요.';
+      set({ error: message });
+      throw new Error(message);
     } finally {
       set({ loading: false });
     }
@@ -132,38 +221,46 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       return;
     }
 
+    const coupleId = profile.couple_id;
     get().leaveRealtime();
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, partnerProfile: null, partnerPresence: null });
+
     try {
+      const fallbackPoint = get().myPresence ? { x: get().myPresence!.x, y: get().myPresence!.y } : { x: 110, y: 210 };
+      const myPresence = toRoomPresence(profile, fallbackPoint);
+
       if (isMockMode) {
-        const couple = (await readMockCouple()) ?? {
+        const couple =
+          (await readMockCouple()) ??
+          ({
           id: profile.couple_id,
-          invite_code: 'MOCK12',
-          user1_id: profile.id,
-          user2_id: 'partner-user'
+            invite_code: 'MOCK12',
+            user1_id: profile.id,
+            user2_id: 'partner-user'
+          } satisfies Couple);
+        const partnerProfile: Profile = {
+          id: findPartnerId(couple, profile.id) ?? 'partner-user',
+          nickname: '상대',
+          avatar_type: 'mint',
+          couple_id: couple.id
         };
+
         set({
           couple,
+          partnerProfile,
           question: {
             id: 'mock-question',
             question: '오늘 서로에게 가장 고마웠던 순간은 언제였나요?',
             active_date: today()
           },
+          myPresence: { ...myPresence, couple_id: couple.id },
           partnerPresence: {
             id: 'mock-presence-partner',
             couple_id: couple.id,
-            user_id: 'partner-user',
+            user_id: partnerProfile.id,
+            nickname: partnerProfile.nickname,
             x: 230,
             y: 160,
-            is_online: true,
-            last_seen: new Date().toISOString()
-          },
-          myPresence: {
-            id: 'mock-presence-me',
-            couple_id: couple.id,
-            user_id: profile.id,
-            x: 110,
-            y: 210,
             is_online: true,
             last_seen: new Date().toISOString()
           }
@@ -171,43 +268,122 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         return;
       }
 
-      const [{ data: couple }, { data: presence }, { data: messages }, { data: question }, { data: answers }] =
+      const [{ data: couple, error: coupleError }, { data: dbPresence }, { data: messages }, { data: question }, { data: answers }] =
         await Promise.all([
-          supabase.from('couples').select('*').eq('id', profile.couple_id).single(),
-          supabase.from('room_presence').select('*').eq('couple_id', profile.couple_id),
+          supabase.from('couples').select('*').eq('id', coupleId).single(),
+          supabase.from('room_presence').select('*').eq('couple_id', coupleId),
           supabase
             .from('messages')
             .select('*')
-            .eq('couple_id', profile.couple_id)
+            .eq('couple_id', coupleId)
             .order('created_at', { ascending: false })
             .limit(50),
           supabase.from('daily_questions').select('*').eq('active_date', today()).maybeSingle(),
-          supabase.from('daily_answers').select('*').eq('couple_id', profile.couple_id)
+          supabase.from('daily_answers').select('*').eq('couple_id', coupleId)
         ]);
 
-      const myPresence = presence?.find((item) => item.user_id === profile.id) ?? null;
-      const partnerPresence = presence?.find((item) => item.user_id !== profile.id) ?? null;
+      if (coupleError || !couple) {
+        throw coupleError ?? new Error('커플 정보를 찾을 수 없습니다.');
+      }
+
+      const partnerId = findPartnerId(couple, profile.id);
+      const { data: partnerProfile } = partnerId
+        ? await supabase.from('profiles').select('*').eq('id', partnerId).maybeSingle()
+        : { data: null };
+
+      const savedMine = dbPresence?.find((item) => item.user_id === profile.id);
+      const savedPartner = dbPresence?.find((item) => item.user_id !== profile.id);
+      const nextMine = savedMine
+        ? { ...savedMine, nickname: profile.nickname, is_online: true }
+        : { ...myPresence, couple_id: coupleId };
+
       set({
-        couple: couple ?? null,
-        myPresence,
-        partnerPresence,
+        couple,
+        partnerProfile: partnerProfile ?? null,
+        myPresence: nextMine,
+        partnerPresence: savedPartner
+          ? {
+              ...savedPartner,
+              nickname: partnerProfile?.nickname ?? '상대',
+              is_online: false
+            }
+          : null,
         messages: [...(messages ?? [])].reverse(),
         question: question ?? null,
         answers: answers ?? []
       });
 
-      const channel = subscribeToRoom(profile.couple_id, {
-        onPresence: (nextPresence) => {
-          if (nextPresence.user_id === profile.id) {
-            set({ myPresence: nextPresence });
+      await get().updatePosition(profile, { x: nextMine.x, y: nextMine.y });
+
+      const channel = subscribeToRoom(coupleId, toRealtimePresence(profile, { x: nextMine.x, y: nextMine.y }), {
+        onPresence: (presences) => {
+          const mine = presences.find((item) => item.user_id === profile.id);
+          const partner = presences.find((item) => item.user_id !== profile.id);
+
+          if (mine) {
+            set((state) => ({
+              myPresence: {
+                ...(state.myPresence ?? toRoomPresence(profile, { x: mine.x, y: mine.y })),
+                user_id: mine.user_id,
+                nickname: mine.nickname,
+                x: mine.x,
+                y: mine.y,
+                is_online: true,
+                last_seen: mine.online_at
+              }
+            }));
+          }
+
+          if (partner) {
+            set((state) => ({
+              partnerPresence: {
+                ...(state.partnerPresence ??
+                  toRoomPresence(
+                    {
+                      id: partner.user_id,
+                      nickname: partner.nickname,
+                      avatar_type: 'mint',
+                      couple_id: coupleId
+                    },
+                    { x: partner.x, y: partner.y }
+                  )),
+                couple_id: coupleId,
+                user_id: partner.user_id,
+                nickname: partner.nickname,
+                x: partner.x,
+                y: partner.y,
+                is_online: true,
+                last_seen: partner.online_at
+              },
+              partnerProfile: state.partnerProfile
+                ? { ...state.partnerProfile, nickname: partner.nickname }
+                : {
+                    id: partner.user_id,
+                    nickname: partner.nickname,
+                    avatar_type: 'mint',
+                    couple_id: coupleId
+                  }
+            }));
           } else {
-            set({ partnerPresence: nextPresence });
+            set((state) => ({
+              partnerPresence: state.partnerPresence ? { ...state.partnerPresence, is_online: false } : null
+            }));
           }
         },
-        onMessage: (message) => set((state) => ({ messages: [...state.messages, message].slice(-50) })),
-        onInteraction: (interaction) => set((state) => ({ interactions: [...state.interactions, interaction].slice(-6) }))
+        onMessage: (message) =>
+          set((state) => ({
+            messages: state.messages.some((item) => item.id === message.id) ? state.messages : [...state.messages, message].slice(-50)
+          })),
+        onInteraction: (interaction) =>
+          set((state) => ({
+            interactions: state.interactions.some((item) => item.id === interaction.id)
+              ? state.interactions
+              : [...state.interactions, interaction].slice(-6)
+          }))
       });
       set({ channel });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : '방 정보를 불러오지 못했어요.' });
     } finally {
       set({ loading: false });
     }
@@ -217,40 +393,62 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     if (!profile.couple_id) {
       return;
     }
+
+    const previous = get().myPresence;
     const presence: RoomPresence = {
-      id: get().myPresence?.id ?? makeId('presence'),
+      id: previous?.id ?? makeId('presence'),
       couple_id: profile.couple_id,
       user_id: profile.id,
+      nickname: profile.nickname,
       x: point.x,
       y: point.y,
       is_online: true,
       last_seen: new Date().toISOString()
     };
     set({ myPresence: presence });
-    if (isMockMode) {
-      return;
+
+    await trackRoomPresence(get().channel, toRealtimePresence(profile, point));
+
+    if (!isMockMode) {
+      await supabase.from('room_presence').upsert(
+        {
+          couple_id: presence.couple_id,
+          user_id: presence.user_id,
+          x: presence.x,
+          y: presence.y,
+          is_online: true,
+          last_seen: presence.last_seen
+        },
+        { onConflict: 'couple_id,user_id' }
+      );
     }
-    await supabase.from('room_presence').upsert(presence, { onConflict: 'couple_id,user_id' });
   },
 
   sendMessage: async (profile, content) => {
     if (!profile.couple_id || !content.trim()) {
       return;
     }
-    const message: Message = {
-      id: makeId('message'),
+    const trimmed = content.trim();
+
+    if (isMockMode) {
+      const message: Message = {
+        id: makeId('message'),
+        couple_id: profile.couple_id,
+        sender_id: profile.id,
+        content: trimmed,
+        created_at: new Date().toISOString()
+      };
+      set((state) => ({ messages: [...state.messages, message].slice(-50) }));
+      return;
+    }
+
+    const { error } = await supabase.from('messages').insert({
       couple_id: profile.couple_id,
       sender_id: profile.id,
-      content: content.trim(),
-      created_at: new Date().toISOString()
-    };
-    set((state) => ({ messages: [...state.messages, message].slice(-50) }));
-    if (!isMockMode) {
-      await supabase.from('messages').insert({
-        couple_id: message.couple_id,
-        sender_id: message.sender_id,
-        content: message.content
-      });
+      content: trimmed
+    });
+    if (error) {
+      throw error;
     }
   },
 
@@ -268,7 +466,12 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     };
     set((state) => ({ interactions: [...state.interactions, interaction].slice(-6) }));
     if (!isMockMode) {
-      await supabase.from('interactions').insert(interaction);
+      await supabase.from('interactions').insert({
+        couple_id: interaction.couple_id,
+        sender_id: interaction.sender_id,
+        receiver_id: interaction.receiver_id,
+        type: interaction.type
+      });
     }
   },
 
@@ -294,7 +497,11 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   },
 
   leaveRealtime: () => {
+    const profile = get().myPresence;
     unsubscribe(get().channel);
-    set({ channel: null });
+    set({
+      channel: null,
+      myPresence: profile ? { ...profile, is_online: false, last_seen: new Date().toISOString() } : null
+    });
   }
 }));

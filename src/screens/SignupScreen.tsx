@@ -15,10 +15,31 @@ export default function SignupScreen({ onLogin }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>방 만들 준비</Text>
-      <Text style={styles.subtitle}>닉네임과 로그인 정보를 입력해 주세요.</Text>
-      <TextInput style={styles.input} value={nickname} onChangeText={setNickname} placeholder="닉네임" />
-      <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
+      <Text style={styles.subtitle}>회원가입할 때 사용할 닉네임을 함께 입력해 주세요.</Text>
+      <TextInput
+        style={styles.input}
+        value={nickname}
+        onChangeText={setNickname}
+        placeholder="닉네임"
+        placeholderTextColor="#9c8a90"
+      />
+      <TextInput
+        style={styles.input}
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        placeholder="이메일"
+        placeholderTextColor="#9c8a90"
+      />
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+        placeholder="비밀번호"
+        placeholderTextColor="#9c8a90"
+      />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Pressable style={styles.primary} disabled={loading} onPress={() => signup(email, password, nickname)}>
         <Text style={styles.primaryText}>{loading ? '가입 중' : '회원가입'}</Text>
@@ -46,7 +67,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 28,
     color: '#8d6270',
-    fontSize: 15
+    fontSize: 15,
+    lineHeight: 22
   },
   input: {
     height: 50,

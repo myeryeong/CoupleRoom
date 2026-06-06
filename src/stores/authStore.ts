@@ -13,6 +13,7 @@ type AuthState = {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, nickname: string) => Promise<void>;
   loadProfile: (userId: string) => Promise<void>;
+  updateNickname: (nickname: string) => Promise<void>;
   setProfile: (profile: Profile | null) => void;
   logout: () => Promise<void>;
 };
@@ -21,14 +22,15 @@ const MOCK_USER_ID = '00000000-0000-4000-8000-000000000001';
 
 async function readMockProfile() {
   const stored = await AsyncStorage.getItem('mock-profile');
-  if (stored) {
-    return JSON.parse(stored) as Profile;
-  }
-  return null;
+  return stored ? (JSON.parse(stored) as Profile) : null;
 }
 
 async function saveMockProfile(profile: Profile) {
   await AsyncStorage.setItem('mock-profile', JSON.stringify(profile));
+}
+
+function normalizeNickname(nickname: string) {
+  return nickname.trim() || '나';
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -44,13 +46,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const profile = await readMockProfile();
         set({
           session: profile ? ({ user: { id: profile.id, email: 'mock@couple.room' } } as Session) : null,
-          profile,
-          loading: false
+          profile
         });
         return;
       }
 
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        throw error;
+      }
       set({ session: data.session });
       if (data.session?.user.id) {
         await get().loadProfile(data.session.user.id);
@@ -79,13 +83,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw error;
+      if (error || !data.user) {
+        throw error ?? new Error('로그인 정보를 확인할 수 없어요.');
       }
       set({ session: data.session });
-      if (data.user) {
-        await get().loadProfile(data.user.id);
-      }
+      await get().loadProfile(data.user.id);
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '로그인에 실패했어요.' });
       throw error;
@@ -97,10 +99,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signup: async (email, password, nickname) => {
     set({ loading: true, error: null });
     try {
+      const nextNickname = normalizeNickname(nickname);
       if (isMockMode) {
         const profile: Profile = {
           id: MOCK_USER_ID,
-          nickname: nickname || '나',
+          nickname: nextNickname,
           avatar_type: 'peach',
           couple_id: null
         };
@@ -113,9 +116,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (error || !data.user) {
         throw error ?? new Error('가입 정보를 확인할 수 없어요.');
       }
-      const profile = {
+      const profile: Profile = {
         id: data.user.id,
-        nickname,
+        nickname: nextNickname,
         avatar_type: 'peach',
         couple_id: null
       };
@@ -137,11 +140,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ profile: await readMockProfile() });
       return;
     }
+
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (error) {
       throw error;
     }
     set({ profile: data });
+  },
+
+  updateNickname: async (nickname) => {
+    const profile = get().profile;
+    if (!profile) {
+      return;
+    }
+
+    const nextProfile = { ...profile, nickname: normalizeNickname(nickname) };
+    set({ profile: nextProfile });
+
+    if (isMockMode) {
+      await saveMockProfile(nextProfile);
+      return;
+    }
+
+    const { error } = await supabase.from('profiles').update({ nickname: nextProfile.nickname }).eq('id', profile.id);
+    if (error) {
+      set({ profile });
+      throw error;
+    }
   },
 
   setProfile: (profile) => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Character from '../components/Character';
 import ChatPanel from '../components/ChatPanel';
 import DailyQuestionCard from '../components/DailyQuestionCard';
@@ -18,8 +18,9 @@ const roomWidth = Dimensions.get('window').width - 32;
 const roomHeight = 320;
 
 export default function CoupleRoomScreen({ onUnlinked }: Props) {
-  const { profile, logout } = useAuthStore();
+  const { profile, logout, updateNickname } = useAuthStore();
   const {
+    partnerProfile,
     myPresence,
     partnerPresence,
     messages,
@@ -34,6 +35,8 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
     leaveRealtime
   } = useRoomStore();
   const [toast, setToast] = useState('');
+  const [editingNickname, setEditingNickname] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState(profile?.nickname ?? '');
   const heartScale = useRef(new Animated.Value(0)).current;
 
   const throttledPosition = useMemo(
@@ -48,6 +51,7 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
 
   useEffect(() => {
     if (profile) {
+      setNicknameDraft(profile.nickname);
       loadRoom(profile);
     }
 
@@ -59,14 +63,14 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
     if (!last || !profile || last.sender_id === profile.id) {
       return;
     }
-    setToast('상대방이 당신을 안아주었어요.');
+    setToast(`${partnerProfile?.nickname ?? '상대'}님이 당신을 안아주었어요.`);
     Animated.sequence([
       Animated.spring(heartScale, { toValue: 1, useNativeDriver: true }),
       Animated.timing(heartScale, { toValue: 0, duration: 900, useNativeDriver: true })
     ]).start();
     const timer = setTimeout(() => setToast(''), 1800);
     return () => clearTimeout(timer);
-  }, [heartScale, interactions, profile]);
+  }, [heartScale, interactions, partnerProfile?.nickname, profile]);
 
   if (!profile) {
     return null;
@@ -76,6 +80,7 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
     id: 'local',
     couple_id: profile.couple_id ?? '',
     user_id: profile.id,
+    nickname: profile.nickname,
     x: 110,
     y: 210,
     is_online: true,
@@ -83,11 +88,20 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
   };
   const partner = partnerPresence;
   const partnerPoint = partner ? { x: partner.x, y: partner.y } : { x: 245, y: 150 };
-  const canHug = Boolean(partner && distance({ x: me.x, y: me.y }, partnerPoint) < 90);
+  const partnerNickname = partner?.nickname ?? partnerProfile?.nickname ?? '상대';
+  const canHug = Boolean(partner && partner.is_online && distance({ x: me.x, y: me.y }, partnerPoint) < 90);
 
   const move = (dx: number, dy: number) => {
     const next = clampPoint({ x: me.x + dx, y: me.y + dy }, roomWidth, roomHeight, 30);
     throttledPosition(next.x, next.y);
+  };
+
+  const saveNickname = async () => {
+    await updateNickname(nicknameDraft);
+    setEditingNickname(false);
+    if (profile) {
+      await updatePosition({ ...profile, nickname: nicknameDraft.trim() || '나' }, { x: me.x, y: me.y });
+    }
   };
 
   return (
@@ -95,17 +109,42 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
       <View style={styles.header}>
         <View>
           <Text style={styles.roomTitle}>Couple Room</Text>
-          <Text style={styles.status}>{partner?.is_online ? '상대 온라인' : '상대 오프라인'}</Text>
+          <Text style={styles.status}>{partner?.is_online ? `${partnerNickname} 온라인` : `${partnerNickname} 오프라인`}</Text>
         </View>
         <Pressable
           style={styles.exit}
           onPress={async () => {
+            leaveRealtime();
             await logout();
             onUnlinked();
           }}
         >
           <Text style={styles.exitText}>나가기</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.nicknamePanel}>
+        {editingNickname ? (
+          <>
+            <TextInput
+              style={styles.nicknameInput}
+              value={nicknameDraft}
+              onChangeText={setNicknameDraft}
+              placeholder="닉네임"
+              placeholderTextColor="#9c8a90"
+            />
+            <Pressable style={styles.smallButton} onPress={saveNickname}>
+              <Text style={styles.smallButtonText}>저장</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.nicknameText}>내 닉네임: {profile.nickname}</Text>
+            <Pressable style={styles.smallButton} onPress={() => setEditingNickname(true)}>
+              <Text style={styles.smallButtonText}>수정</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <View style={[styles.room, { width: roomWidth, height: roomHeight }]}>
@@ -115,7 +154,9 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
         </View>
         <View style={styles.plant} />
         <Character nickname={profile.nickname} position={{ x: me.x, y: me.y }} variant="me" online />
-        <Character nickname="상대" position={partnerPoint} variant="partner" online={partner?.is_online ?? false} />
+        {partner ? (
+          <Character nickname={partnerNickname} position={partnerPoint} variant="partner" online={partner.is_online} />
+        ) : null}
         <Animated.Text style={[styles.heart, { transform: [{ scale: heartScale }] }]}>♡</Animated.Text>
       </View>
 
@@ -127,7 +168,7 @@ export default function CoupleRoomScreen({ onUnlinked }: Props) {
             onPress={() => {
               if (partner) {
                 sendHug(profile, partner.user_id);
-                setToast('따뜻한 안아주기를 보냈어요.');
+                setToast(`${partnerNickname}님에게 안아주기를 보냈어요.`);
               }
             }}
           />
@@ -174,6 +215,37 @@ const styles = StyleSheet.create({
   },
   exitText: {
     color: '#51313a',
+    fontWeight: '800'
+  },
+  nicknamePanel: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#ead5db'
+  },
+  nicknameText: {
+    flex: 1,
+    color: '#3b2d32',
+    fontWeight: '800'
+  },
+  nicknameInput: {
+    flex: 1,
+    height: 38,
+    color: '#3b2d32'
+  },
+  smallButton: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#51313a'
+  },
+  smallButtonText: {
+    color: '#ffffff',
     fontWeight: '800'
   },
   room: {
