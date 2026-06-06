@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "CoupleRoom",
+    "slug": "couple-room",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "coupleroom",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f8eef2"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

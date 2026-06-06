@@ -1,0 +1,62 @@
+export type Point = {
+  x: number;
+  y: number;
+};
+
+export type Profile = {
+  id: string;
+  nickname: string;
+  avatar_type: string;
+  couple_id: string | null;
+  created_at?: string;
+};
+
+export type Couple = {
+  id: string;
+  invite_code: string;
+  user1_id: string;
+  user2_id: string | null;
+  created_at?: string;
+};
+
+export type RoomPresence = {
+  id: string;
+  couple_id: string;
+  user_id: string;
+  x: number;
+  y: number;
+  is_online: boolean;
+  last_seen: string;
+};
+
+export type Message = {
+  id: string;
+  couple_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+};
+
+export type Interaction = {
+  id: string;
+  couple_id: string;
+  sender_id: string;
+  receiver_id: string;
+  type: 'hug';
+  created_at: string;
+};
+
+export type DailyQuestion = {
+  id: string;
+  question: string;
+  active_date: string;
+};
+
+export type DailyAnswer = {
+  id: string;
+  question_id: string;
+  couple_id: string;
+  user_id: string;
+  answer: string;
+  created_at: string;
+};
