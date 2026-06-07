@@ -36,8 +36,11 @@ export default function ChatPanel({ messages, myUserId, onSend }: Props) {
         renderItem={({ item }) => {
           const mine = item.sender_id === myUserId;
           return (
-            <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-              <Text style={[styles.messageText, mine ? styles.mineText : styles.theirsText]}>{item.content}</Text>
+            <View style={[styles.messageWrap, mine ? styles.mineWrap : styles.theirsWrap]}>
+              <Text style={styles.sender}>{mine ? '나' : item.sender_nickname}</Text>
+              <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
+                <Text style={[styles.messageText, mine ? styles.mineText : styles.theirsText]}>{item.content}</Text>
+              </View>
             </View>
           );
         }}
@@ -92,18 +95,32 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm
   },
+  messageWrap: {
+    maxWidth: '78%'
+  },
+  mineWrap: {
+    alignSelf: 'flex-end',
+    alignItems: 'flex-end'
+  },
+  theirsWrap: {
+    alignSelf: 'flex-start',
+    alignItems: 'flex-start'
+  },
+  sender: {
+    marginBottom: 3,
+    color: colors.textSub,
+    fontSize: 11,
+    fontWeight: '800'
+  },
   bubble: {
-    maxWidth: '78%',
     borderRadius: 18,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm
   },
   mine: {
-    alignSelf: 'flex-end',
     backgroundColor: colors.primaryDark
   },
   theirs: {
-    alignSelf: 'flex-start',
     backgroundColor: colors.roomWall,
     borderWidth: 1,
     borderColor: colors.border

@@ -439,6 +439,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         id: makeId('message'),
         couple_id: profile.couple_id,
         sender_id: profile.id,
+        sender_nickname: profile.nickname,
         content: trimmed,
         created_at: new Date().toISOString()
       };
@@ -446,7 +447,12 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       return;
     }
 
-    const { error } = await supabase.from('messages').insert({ couple_id: profile.couple_id, sender_id: profile.id, content: trimmed });
+    const { error } = await supabase.from('messages').insert({
+      couple_id: profile.couple_id,
+      sender_id: profile.id,
+      sender_nickname: profile.nickname,
+      content: trimmed
+    });
     if (error) {
       throw error;
     }

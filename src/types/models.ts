@@ -46,6 +46,7 @@ export type Message = {
   id: string;
   couple_id: string;
   sender_id: string;
+  sender_nickname: string;
   content: string;
   created_at: string;
 };

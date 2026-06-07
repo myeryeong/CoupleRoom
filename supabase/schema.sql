@@ -36,9 +36,13 @@ create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   couple_id uuid not null references public.couples(id) on delete cascade,
   sender_id uuid not null references auth.users(id) on delete cascade,
+  sender_nickname text not null default '익명',
   content text not null check (length(content) between 1 and 1000),
   created_at timestamptz not null default now()
 );
+
+alter table public.messages
+  add column if not exists sender_nickname text not null default '익명';
 
 create table if not exists public.interactions (
   id uuid primary key default gen_random_uuid(),
@@ -83,6 +87,7 @@ create table if not exists public.daily_answers (
 create index if not exists profiles_couple_id_idx on public.profiles (couple_id);
 create index if not exists room_presence_couple_id_idx on public.room_presence (couple_id);
 create index if not exists messages_couple_created_idx on public.messages (couple_id, created_at desc);
+create index if not exists idx_messages_couple_id_created_at on public.messages (couple_id, created_at);
 create index if not exists interactions_couple_created_idx on public.interactions (couple_id, created_at desc);
 create index if not exists room_furniture_couple_idx on public.room_furniture (couple_id);
 create index if not exists daily_answers_couple_idx on public.daily_answers (couple_id, question_id);
