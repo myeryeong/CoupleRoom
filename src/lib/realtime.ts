@@ -1,10 +1,11 @@
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { Interaction, Message, RealtimePresenceState } from '../types/models';
+import { Interaction, Message, RealtimePresenceState, RoomFurniture } from '../types/models';
 
 type PresenceHandler = (presences: RealtimePresenceState[]) => void;
 type MessageHandler = (message: Message) => void;
 type InteractionHandler = (interaction: Interaction) => void;
+type FurnitureHandler = (furniture: RoomFurniture) => void;
 
 export function subscribeToRoom(
   coupleId: string,
@@ -13,6 +14,7 @@ export function subscribeToRoom(
     onPresence: PresenceHandler;
     onMessage: MessageHandler;
     onInteraction: InteractionHandler;
+    onFurniture: FurnitureHandler;
   }
 ): RealtimeChannel {
   const channel = supabase
@@ -59,6 +61,16 @@ export function subscribeToRoom(
         filter: `couple_id=eq.${coupleId}`
       },
       () => undefined
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'room_furniture',
+        filter: `couple_id=eq.${coupleId}`
+      },
+      (payload) => handlers.onFurniture(payload.new as RoomFurniture)
     );
 
   channel.subscribe(async (status) => {

@@ -7,6 +7,7 @@ import SignupScreen from './src/screens/SignupScreen';
 import CoupleLinkScreen from './src/screens/CoupleLinkScreen';
 import CoupleRoomScreen from './src/screens/CoupleRoomScreen';
 import { useAuthStore } from './src/stores/authStore';
+import { colors } from './src/theme/colors';
 
 type RouteName = 'splash' | 'login' | 'signup' | 'link' | 'room';
 
@@ -47,6 +48,6 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff7f8'
+    backgroundColor: colors.background
   }
 });

@@ -45,8 +45,23 @@ create table if not exists public.interactions (
   couple_id uuid not null references public.couples(id) on delete cascade,
   sender_id uuid not null references auth.users(id) on delete cascade,
   receiver_id uuid not null references auth.users(id) on delete cascade,
-  type text not null check (type in ('hug')),
+  type text not null,
   created_at timestamptz not null default now()
+);
+
+alter table public.interactions
+  drop constraint if exists interactions_type_check,
+  add constraint interactions_type_check check (type in ('hug', 'kiss', 'pat'));
+
+create table if not exists public.room_furniture (
+  id uuid primary key default gen_random_uuid(),
+  couple_id uuid not null references public.couples(id) on delete cascade,
+  type text not null check (type in ('sofa', 'table', 'plant', 'lamp', 'rug')),
+  x numeric not null default 80,
+  y numeric not null default 100,
+  rotation numeric not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.daily_questions (
@@ -69,6 +84,7 @@ create index if not exists profiles_couple_id_idx on public.profiles (couple_id)
 create index if not exists room_presence_couple_id_idx on public.room_presence (couple_id);
 create index if not exists messages_couple_created_idx on public.messages (couple_id, created_at desc);
 create index if not exists interactions_couple_created_idx on public.interactions (couple_id, created_at desc);
+create index if not exists room_furniture_couple_idx on public.room_furniture (couple_id);
 create index if not exists daily_answers_couple_idx on public.daily_answers (couple_id, question_id);
 
 do $$
@@ -89,11 +105,18 @@ begin
 exception when duplicate_object then null;
 end $$;
 
+do $$
+begin
+  alter publication supabase_realtime add table public.room_furniture;
+exception when duplicate_object then null;
+end $$;
+
 alter table public.profiles enable row level security;
 alter table public.couples enable row level security;
 alter table public.room_presence enable row level security;
 alter table public.messages enable row level security;
 alter table public.interactions enable row level security;
+alter table public.room_furniture enable row level security;
 alter table public.daily_questions enable row level security;
 alter table public.daily_answers enable row level security;
 
@@ -191,6 +214,17 @@ create policy "interactions insert self"
 on public.interactions for insert
 with check (sender_id = auth.uid() and public.is_couple_member(couple_id));
 
+drop policy if exists "furniture read couple" on public.room_furniture;
+create policy "furniture read couple"
+on public.room_furniture for select
+using (public.is_couple_member(couple_id));
+
+drop policy if exists "furniture write couple" on public.room_furniture;
+create policy "furniture write couple"
+on public.room_furniture for all
+using (public.is_couple_member(couple_id))
+with check (public.is_couple_member(couple_id));
+
 drop policy if exists "questions read signed in" on public.daily_questions;
 create policy "questions read signed in"
 on public.daily_questions for select
@@ -225,4 +259,5 @@ on conflict (active_date) do nothing;
 -- 개발 초기에 RLS가 막혀 디버깅이 어려우면 Supabase SQL Editor에서 아래처럼 임시로 끌 수 있습니다.
 -- alter table public.messages disable row level security;
 -- alter table public.room_presence disable row level security;
+-- alter table public.room_furniture disable row level security;
 -- 운영 전에는 반드시 다시 enable row level security를 적용하고 정책을 검토하세요.

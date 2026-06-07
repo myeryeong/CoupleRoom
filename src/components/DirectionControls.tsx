@@ -1,5 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors } from '../theme/colors';
+import { shadows } from '../theme/shadows';
 
 type Props = {
   onMove: (dx: number, dy: number) => void;
@@ -15,7 +17,9 @@ export default function DirectionControls({ onMove }: Props) {
         <Pressable accessibilityLabel="왼쪽으로 이동" style={styles.button} onPress={() => onMove(-18, 0)}>
           <Text style={styles.text}>←</Text>
         </Pressable>
-        <View style={styles.center} />
+        <View style={styles.center}>
+          <Text style={styles.centerText}>move</Text>
+        </View>
         <Pressable accessibilityLabel="오른쪽으로 이동" style={styles.button} onPress={() => onMove(18, 0)}>
           <Text style={styles.text}>→</Text>
         </Pressable>
@@ -43,19 +47,29 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#ead5db'
+    borderColor: colors.border,
+    ...shadows.tiny
   },
   center: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#f7e5e9'
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.roomWall,
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  centerText: {
+    color: colors.textSub,
+    fontSize: 9,
+    fontWeight: '900'
   },
   text: {
     fontSize: 24,
-    color: '#51313a',
-    fontWeight: '800'
+    color: colors.accentBrown,
+    fontWeight: '900'
   }
 });

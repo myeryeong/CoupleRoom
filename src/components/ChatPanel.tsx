@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Message } from '../types/models';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { shadows } from '../theme/shadows';
 
 type Props = {
   messages: Message[];
@@ -21,6 +24,10 @@ export default function ChatPanel({ messages, myUserId, onSend }: Props) {
 
   return (
     <View style={styles.panel}>
+      <View style={styles.header}>
+        <Text style={styles.title}>우리 대화</Text>
+        <Text style={styles.count}>{messages.length}/50</Text>
+      </View>
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
@@ -40,8 +47,8 @@ export default function ChatPanel({ messages, myUserId, onSend }: Props) {
           style={styles.input}
           value={content}
           onChangeText={setContent}
-          placeholder="메시지 입력"
-          placeholderTextColor="#9c8a90"
+          placeholder="따뜻한 말을 남겨요"
+          placeholderTextColor={colors.textSub}
           returnKeyType="send"
           onSubmitEditing={submit}
         />
@@ -55,56 +62,76 @@ export default function ChatPanel({ messages, myUserId, onSend }: Props) {
 
 const styles = StyleSheet.create({
   panel: {
-    minHeight: 210,
-    borderTopWidth: 1,
-    borderTopColor: '#ead5db',
-    backgroundColor: '#fffafb'
+    minHeight: 214,
+    borderRadius: 18,
+    paddingTop: spacing.md,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.soft
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  title: {
+    color: colors.textMain,
+    fontWeight: '900'
+  },
+  count: {
+    color: colors.textSub,
+    fontSize: 12,
+    fontWeight: '700'
   },
   list: {
-    maxHeight: 152
+    maxHeight: 142
   },
   listContent: {
-    padding: 12,
-    gap: 8
+    padding: spacing.md,
+    gap: spacing.sm
   },
   bubble: {
     maxWidth: '78%',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 8
+    borderRadius: 18,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
   },
   mine: {
     alignSelf: 'flex-end',
-    backgroundColor: '#51313a'
+    backgroundColor: colors.primaryDark
   },
   theirs: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e8f6f6'
+    backgroundColor: colors.roomWall,
+    borderWidth: 1,
+    borderColor: colors.border
   },
   messageText: {
     fontSize: 14,
-    lineHeight: 19
+    lineHeight: 20
   },
   mineText: {
-    color: '#ffffff'
+    color: colors.white
   },
   theirsText: {
-    color: '#263b3c'
+    color: colors.textMain
   },
   inputRow: {
     flexDirection: 'row',
-    padding: 12,
-    gap: 8
+    padding: spacing.md,
+    gap: spacing.sm
   },
   input: {
     flex: 1,
     height: 42,
     borderRadius: 21,
-    paddingHorizontal: 14,
-    backgroundColor: '#ffffff',
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: '#ead5db',
-    color: '#3b2d32'
+    borderColor: colors.border,
+    color: colors.textMain
   },
   send: {
     height: 42,
@@ -112,10 +139,10 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#f2a6b8'
+    backgroundColor: colors.primary
   },
   sendText: {
-    color: '#3b2d32',
-    fontWeight: '800'
+    color: colors.textMain,
+    fontWeight: '900'
   }
 });

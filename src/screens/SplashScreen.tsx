@@ -1,14 +1,17 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { shadows } from '../theme/shadows';
 
 export default function SplashScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.mark}>
-        <Text style={styles.markText}>CR</Text>
+        <Text style={styles.markText}>♡</Text>
       </View>
       <Text style={styles.title}>CoupleRoom</Text>
-      <Text style={styles.subtitle}>둘만의 작은 방을 준비하고 있어요</Text>
+      <Text style={styles.subtitle}>우리 둘만의 작은 방을 준비하고 있어요</Text>
     </View>
   );
 }
@@ -18,30 +21,35 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff7f8'
+    backgroundColor: colors.background,
+    padding: spacing.xl
   },
   mark: {
-    width: 84,
-    height: 84,
-    borderRadius: 28,
+    width: 92,
+    height: 92,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#51313a'
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+    ...shadows.soft
   },
   markText: {
-    color: '#ffffff',
-    fontSize: 28,
+    color: colors.accentPink,
+    fontSize: 42,
     fontWeight: '900'
   },
   title: {
-    marginTop: 18,
-    color: '#3b2d32',
+    marginTop: spacing.lg,
+    color: colors.textMain,
     fontSize: 30,
     fontWeight: '900'
   },
   subtitle: {
-    marginTop: 8,
-    color: '#8d6270',
-    fontSize: 15
+    marginTop: spacing.sm,
+    color: colors.textSub,
+    fontSize: 15,
+    textAlign: 'center'
   }
 });

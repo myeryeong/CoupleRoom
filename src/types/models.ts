@@ -3,6 +3,10 @@ export type Point = {
   y: number;
 };
 
+export type InteractionType = 'hug' | 'kiss' | 'pat';
+
+export type FurnitureType = 'sofa' | 'table' | 'plant' | 'lamp' | 'rug';
+
 export type Profile = {
   id: string;
   nickname: string;
@@ -51,8 +55,19 @@ export type Interaction = {
   couple_id: string;
   sender_id: string;
   receiver_id: string;
-  type: 'hug';
+  type: InteractionType;
   created_at: string;
+};
+
+export type RoomFurniture = {
+  id: string;
+  couple_id: string;
+  type: FurnitureType;
+  x: number;
+  y: number;
+  rotation?: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type DailyQuestion = {

@@ -7,11 +7,14 @@ import {
   Couple,
   DailyAnswer,
   DailyQuestion,
+  FurnitureType,
   Interaction,
+  InteractionType,
   Message,
   Point,
   Profile,
   RealtimePresenceState,
+  RoomFurniture,
   RoomPresence
 } from '../types/models';
 
@@ -22,6 +25,7 @@ type RoomState = {
   partnerPresence: RoomPresence | null;
   messages: Message[];
   interactions: Interaction[];
+  furniture: RoomFurniture[];
   question: DailyQuestion | null;
   answers: DailyAnswer[];
   loading: boolean;
@@ -32,15 +36,34 @@ type RoomState = {
   loadRoom: (profile: Profile) => Promise<void>;
   updatePosition: (profile: Profile, point: Point) => Promise<void>;
   sendMessage: (profile: Profile, content: string) => Promise<void>;
-  sendHug: (profile: Profile, receiverId: string) => Promise<void>;
+  sendInteraction: (profile: Profile, receiverId: string, type: InteractionType) => Promise<void>;
+  addFurniture: (profile: Profile, type: FurnitureType) => Promise<void>;
+  moveFurniture: (profile: Profile, furnitureId: string) => Promise<void>;
   saveAnswer: (profile: Profile, answer: string) => Promise<void>;
   leaveRealtime: () => void;
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+const defaultFurniture: Omit<RoomFurniture, 'id' | 'couple_id'>[] = [
+  { type: 'rug', x: 135, y: 235 },
+  { type: 'table', x: 52, y: 92 },
+  { type: 'plant', x: 260, y: 76 },
+  { type: 'lamp', x: 28, y: 52 }
+];
+
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makeUuid() {
+  const bytes = Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.map((byte) => byte.toString(16).padStart(2, '0'));
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex
+    .slice(8, 10)
+    .join('')}-${hex.slice(10, 16).join('')}`;
 }
 
 function toRoomPresence(profile: Profile, point: Point, isOnline = true): RoomPresence {
@@ -66,6 +89,14 @@ function toRealtimePresence(profile: Profile, point: Point): RealtimePresenceSta
   };
 }
 
+function decorateDefaults(coupleId: string): RoomFurniture[] {
+  return defaultFurniture.map((item) => ({
+    ...item,
+    id: makeUuid(),
+    couple_id: coupleId
+  }));
+}
+
 async function readMockCouple() {
   const stored = await AsyncStorage.getItem('mock-couple');
   return stored ? (JSON.parse(stored) as Couple) : null;
@@ -77,6 +108,15 @@ async function saveMockCouple(couple: Couple) {
 
 async function saveMockProfile(profile: Profile) {
   await AsyncStorage.setItem('mock-profile', JSON.stringify(profile));
+}
+
+async function readMockFurniture(coupleId: string) {
+  const stored = await AsyncStorage.getItem(`mock-furniture:${coupleId}`);
+  return stored ? (JSON.parse(stored) as RoomFurniture[]) : decorateDefaults(coupleId);
+}
+
+async function saveMockFurniture(coupleId: string, furniture: RoomFurniture[]) {
+  await AsyncStorage.setItem(`mock-furniture:${coupleId}`, JSON.stringify(furniture));
 }
 
 function findPartnerId(couple: Couple | null, currentUserId: string) {
@@ -93,6 +133,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
   partnerPresence: null,
   messages: [],
   interactions: [],
+  furniture: [],
   question: null,
   answers: [],
   loading: false,
@@ -103,16 +144,11 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const invite_code = createInviteCode();
-
       if (isMockMode) {
-        const couple: Couple = {
-          id: makeId('couple'),
-          invite_code,
-          user1_id: profile.id,
-          user2_id: null
-        };
+        const couple: Couple = { id: makeId('couple'), invite_code, user1_id: profile.id, user2_id: null };
         await saveMockCouple(couple);
         await saveMockProfile({ ...profile, couple_id: couple.id });
+        await saveMockFurniture(couple.id, decorateDefaults(couple.id));
         set({ couple });
         return couple;
       }
@@ -146,16 +182,10 @@ export const useRoomStore = create<RoomState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const normalizedCode = inviteCode.trim().toUpperCase();
-
       if (isMockMode) {
         const existing =
           (await readMockCouple()) ??
-          ({
-            id: makeId('couple'),
-            invite_code: normalizedCode,
-            user1_id: 'partner-user',
-            user2_id: null
-          } satisfies Couple);
+          ({ id: makeId('couple'), invite_code: normalizedCode, user1_id: 'partner-user', user2_id: null } satisfies Couple);
 
         if (existing.user1_id === profile.id) {
           throw new Error('본인의 초대 코드는 사용할 수 없습니다.');
@@ -171,11 +201,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         return couple;
       }
 
-      const { data: couple, error } = await supabase
-        .from('couples')
-        .select('*')
-        .eq('invite_code', normalizedCode)
-        .maybeSingle();
+      const { data: couple, error } = await supabase.from('couples').select('*').eq('invite_code', normalizedCode).maybeSingle();
       if (error) {
         throw error;
       }
@@ -232,12 +258,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       if (isMockMode) {
         const couple =
           (await readMockCouple()) ??
-          ({
-          id: profile.couple_id,
-            invite_code: 'MOCK12',
-            user1_id: profile.id,
-            user2_id: 'partner-user'
-          } satisfies Couple);
+          ({ id: coupleId, invite_code: 'MOCK12', user1_id: profile.id, user2_id: 'partner-user' } satisfies Couple);
         const partnerProfile: Profile = {
           id: findPartnerId(couple, profile.id) ?? 'partner-user',
           nickname: '상대',
@@ -248,6 +269,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         set({
           couple,
           partnerProfile,
+          furniture: await readMockFurniture(couple.id),
           question: {
             id: 'mock-question',
             question: '오늘 서로에게 가장 고마웠던 순간은 언제였나요?',
@@ -272,12 +294,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
         await Promise.all([
           supabase.from('couples').select('*').eq('id', coupleId).single(),
           supabase.from('room_presence').select('*').eq('couple_id', coupleId),
-          supabase
-            .from('messages')
-            .select('*')
-            .eq('couple_id', coupleId)
-            .order('created_at', { ascending: false })
-            .limit(50),
+          supabase.from('messages').select('*').eq('couple_id', coupleId).order('created_at', { ascending: false }).limit(50),
           supabase.from('daily_questions').select('*').eq('active_date', today()).maybeSingle(),
           supabase.from('daily_answers').select('*').eq('couple_id', coupleId)
         ]);
@@ -290,12 +307,11 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       const { data: partnerProfile } = partnerId
         ? await supabase.from('profiles').select('*').eq('id', partnerId).maybeSingle()
         : { data: null };
+      const { data: dbFurniture } = await (supabase as any).from('room_furniture').select('*').eq('couple_id', coupleId);
 
       const savedMine = dbPresence?.find((item) => item.user_id === profile.id);
       const savedPartner = dbPresence?.find((item) => item.user_id !== profile.id);
-      const nextMine = savedMine
-        ? { ...savedMine, nickname: profile.nickname, is_online: true }
-        : { ...myPresence, couple_id: coupleId };
+      const nextMine = savedMine ? { ...savedMine, nickname: profile.nickname, is_online: true } : { ...myPresence, couple_id: coupleId };
 
       set({
         couple,
@@ -309,6 +325,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             }
           : null,
         messages: [...(messages ?? [])].reverse(),
+        furniture: (dbFurniture as RoomFurniture[] | null)?.length ? (dbFurniture as RoomFurniture[]) : decorateDefaults(coupleId),
         question: question ?? null,
         answers: answers ?? []
       });
@@ -338,15 +355,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             set((state) => ({
               partnerPresence: {
                 ...(state.partnerPresence ??
-                  toRoomPresence(
-                    {
-                      id: partner.user_id,
-                      nickname: partner.nickname,
-                      avatar_type: 'mint',
-                      couple_id: coupleId
-                    },
-                    { x: partner.x, y: partner.y }
-                  )),
+                  toRoomPresence({ id: partner.user_id, nickname: partner.nickname, avatar_type: 'mint', couple_id: coupleId }, partner)),
                 couple_id: coupleId,
                 user_id: partner.user_id,
                 nickname: partner.nickname,
@@ -357,12 +366,7 @@ export const useRoomStore = create<RoomState>((set, get) => ({
               },
               partnerProfile: state.partnerProfile
                 ? { ...state.partnerProfile, nickname: partner.nickname }
-                : {
-                    id: partner.user_id,
-                    nickname: partner.nickname,
-                    avatar_type: 'mint',
-                    couple_id: coupleId
-                  }
+                : { id: partner.user_id, nickname: partner.nickname, avatar_type: 'mint', couple_id: coupleId }
             }));
           } else {
             set((state) => ({
@@ -379,6 +383,12 @@ export const useRoomStore = create<RoomState>((set, get) => ({
             interactions: state.interactions.some((item) => item.id === interaction.id)
               ? state.interactions
               : [...state.interactions, interaction].slice(-6)
+          })),
+        onFurniture: (nextFurniture) =>
+          set((state) => ({
+            furniture: state.furniture.some((item) => item.id === nextFurniture.id)
+              ? state.furniture.map((item) => (item.id === nextFurniture.id ? nextFurniture : item))
+              : [...state.furniture, nextFurniture]
           }))
       });
       set({ channel });
@@ -406,21 +416,15 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       last_seen: new Date().toISOString()
     };
     set({ myPresence: presence });
-
     await trackRoomPresence(get().channel, toRealtimePresence(profile, point));
 
     if (!isMockMode) {
-      await supabase.from('room_presence').upsert(
-        {
-          couple_id: presence.couple_id,
-          user_id: presence.user_id,
-          x: presence.x,
-          y: presence.y,
-          is_online: true,
-          last_seen: presence.last_seen
-        },
-        { onConflict: 'couple_id,user_id' }
-      );
+      await supabase
+        .from('room_presence')
+        .upsert(
+          { couple_id: presence.couple_id, user_id: presence.user_id, x: presence.x, y: presence.y, is_online: true, last_seen: presence.last_seen },
+          { onConflict: 'couple_id,user_id' }
+        );
     }
   },
 
@@ -442,17 +446,13 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       return;
     }
 
-    const { error } = await supabase.from('messages').insert({
-      couple_id: profile.couple_id,
-      sender_id: profile.id,
-      content: trimmed
-    });
+    const { error } = await supabase.from('messages').insert({ couple_id: profile.couple_id, sender_id: profile.id, content: trimmed });
     if (error) {
       throw error;
     }
   },
 
-  sendHug: async (profile, receiverId) => {
+  sendInteraction: async (profile, receiverId, type) => {
     if (!profile.couple_id) {
       return;
     }
@@ -461,17 +461,60 @@ export const useRoomStore = create<RoomState>((set, get) => ({
       couple_id: profile.couple_id,
       sender_id: profile.id,
       receiver_id: receiverId,
-      type: 'hug',
+      type,
       created_at: new Date().toISOString()
     };
     set((state) => ({ interactions: [...state.interactions, interaction].slice(-6) }));
     if (!isMockMode) {
-      await supabase.from('interactions').insert({
-        couple_id: interaction.couple_id,
-        sender_id: interaction.sender_id,
-        receiver_id: interaction.receiver_id,
-        type: interaction.type
-      });
+      await supabase
+        .from('interactions')
+        .insert({ couple_id: interaction.couple_id, sender_id: interaction.sender_id, receiver_id: interaction.receiver_id, type });
+    }
+  },
+
+  addFurniture: async (profile, type) => {
+    if (!profile.couple_id) {
+      return;
+    }
+    const next: RoomFurniture = {
+      id: makeUuid(),
+      couple_id: profile.couple_id,
+      type,
+      x: 70 + Math.floor(Math.random() * 170),
+      y: 80 + Math.floor(Math.random() * 130)
+    };
+    const furniture = [...get().furniture, next];
+    set({ furniture });
+
+    if (isMockMode) {
+      await saveMockFurniture(profile.couple_id, furniture);
+      return;
+    }
+    await (supabase as any).from('room_furniture').insert(next);
+  },
+
+  moveFurniture: async (profile, furnitureId) => {
+    if (!profile.couple_id) {
+      return;
+    }
+    const furniture = get().furniture.map((item) =>
+      item.id === furnitureId
+        ? {
+            ...item,
+            x: item.x > 210 ? 52 : item.x + 42,
+            y: item.y > 235 ? 72 : item.y + 24
+          }
+        : item
+    );
+    const moved = furniture.find((item) => item.id === furnitureId);
+    set({ furniture });
+
+    if (isMockMode) {
+      await saveMockFurniture(profile.couple_id, furniture);
+      return;
+    }
+    if (moved) {
+      await (supabase as any).from('room_furniture').upsert(moved, { onConflict: 'id' });
     }
   },
 

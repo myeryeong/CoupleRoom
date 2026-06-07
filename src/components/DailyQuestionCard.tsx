@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DailyAnswer, DailyQuestion } from '../types/models';
+import { colors } from '../theme/colors';
+import { spacing } from '../theme/spacing';
+import { shadows } from '../theme/shadows';
 
 type Props = {
   question: DailyQuestion | null;
@@ -31,7 +34,7 @@ export default function DailyQuestionCard({ question, answers, myUserId, onSubmi
             value={answer}
             onChangeText={setAnswer}
             placeholder="짧게 답해보기"
-            placeholderTextColor="#9c8a90"
+            placeholderTextColor={colors.textSub}
           />
           <Pressable
             style={styles.save}
@@ -52,37 +55,39 @@ export default function DailyQuestionCard({ question, answers, myUserId, onSubmi
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: spacing.lg,
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: '#ead5db'
+    borderColor: colors.border,
+    ...shadows.soft
   },
   label: {
     fontSize: 12,
-    color: '#8d6270',
-    fontWeight: '800'
+    color: colors.primaryDark,
+    fontWeight: '900'
   },
   question: {
-    marginTop: 4,
-    color: '#3b2d32',
+    marginTop: 5,
+    color: colors.textMain,
     fontSize: 15,
-    fontWeight: '800',
-    lineHeight: 21
+    fontWeight: '900',
+    lineHeight: 22
   },
   row: {
-    marginTop: 10,
+    marginTop: spacing.md,
     flexDirection: 'row',
-    gap: 8
+    gap: spacing.sm
   },
   input: {
     flex: 1,
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#ead5db',
-    paddingHorizontal: 12,
-    color: '#3b2d32'
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.md,
+    color: colors.textMain
   },
   save: {
     minWidth: 56,
@@ -90,20 +95,20 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#8fcfd0'
+    backgroundColor: colors.primary
   },
   saveText: {
-    color: '#263b3c',
-    fontWeight: '800'
+    color: colors.textMain,
+    fontWeight: '900'
   },
   answer: {
-    marginTop: 8,
-    color: '#51313a',
-    lineHeight: 19
+    marginTop: spacing.sm,
+    color: colors.accentBrown,
+    lineHeight: 20
   },
   muted: {
-    marginTop: 8,
-    color: '#9c8a90',
+    marginTop: spacing.sm,
+    color: colors.textSub,
     fontSize: 12
   }
 });
